@@ -19,10 +19,12 @@
 #include "Timer.h"
 #include "SECPK1/SECP256k1.h"
 #include "GPU/GPUEngine.h"
+#include "TronAddress.h"
 #include <fstream>
 #include <string>
 #include <string.h>
 #include <stdexcept>
+#include <cctype>
 
 using namespace std;
 
@@ -61,6 +63,8 @@ void printUsage() {
   printf(" -o fileName: output result to fileName\n");
   printf(" -l: List cuda enabled devices\n");
   printf(" -check: Check GPU kernel vs CPU\n");
+  printf(" -tronPriv privateKeyHex: Compute TRON address from a private key and exit\n");
+  printf(" -tronPub publicKeyHex: Compute TRON address from a public key and exit\n");
   printf(" inFile: intput configuration file\n");
   exit(0);
 
@@ -136,6 +140,81 @@ void getInts(string name,vector<int> &tokens,const string &text,char sep) {
 }
 // ------------------------------------------------------------------------------------------
 
+string normalizeHex(string value) {
+
+  if(value.rfind("0x",0) == 0 || value.rfind("0X",0) == 0)
+    value = value.substr(2);
+
+  return value;
+
+}
+
+bool isHexString(const string &value) {
+
+  if(value.length() == 0)
+    return false;
+
+  for(char c : value) {
+    if(!isxdigit((unsigned char)c))
+      return false;
+  }
+
+  return true;
+
+}
+
+bool parsePrivateKeyHex(Secp256K1 *secp,const string &value,Int *privKey) {
+
+  string hex = normalizeHex(value);
+  if(hex.length() == 0 || hex.length() > 64 || !isHexString(hex)) {
+    printf("Invalid private key, expected up to 64 hexadecimal digits\n");
+    return false;
+  }
+
+  privKey->SetBase16((char *)hex.c_str());
+  if(privKey->IsZero() || privKey->IsGreaterOrEqual(&secp->order)) {
+    printf("Invalid private key, expected a value in the [1,n-1] secp256k1 range\n");
+    return false;
+  }
+
+  return true;
+
+}
+
+void printTronFromPrivateKey(Secp256K1 *secp,const string &value) {
+
+  Int privKey;
+  if(!parsePrivateKeyHex(secp,value,&privKey))
+    exit(-1);
+
+  Point pubKey = secp->ComputePublicKey(&privKey);
+  printf("Priv    : 0x%s\n",privKey.GetBase16().c_str());
+  printf("Pub(C)  : 0x%s\n",secp->GetPublicKeyHex(true,pubKey).c_str());
+  printf("Pub(U)  : 0x%s\n",secp->GetPublicKeyHex(false,pubKey).c_str());
+  printf("TRONHEX : 0x%s\n",TronAddress::PublicKeyToHexAddress(pubKey).c_str());
+  printf("TRON    : %s\n",TronAddress::PublicKeyToBase58Address(pubKey).c_str());
+  exit(0);
+
+}
+
+void printTronFromPublicKey(Secp256K1 *secp,const string &value) {
+
+  Point pubKey;
+  bool isCompressed = false;
+  string hex = normalizeHex(value);
+  if(!secp->ParsePublicKeyHex(hex,pubKey,isCompressed))
+    exit(-1);
+
+  printf("Pub(C)  : 0x%s\n",secp->GetPublicKeyHex(true,pubKey).c_str());
+  printf("Pub(U)  : 0x%s\n",secp->GetPublicKeyHex(false,pubKey).c_str());
+  printf("TRONHEX : 0x%s\n",TronAddress::PublicKeyToHexAddress(pubKey).c_str());
+  printf("TRON    : %s\n",TronAddress::PublicKeyToBase58Address(pubKey).c_str());
+  exit(0);
+
+}
+
+// ------------------------------------------------------------------------------------------
+
 // Default params
 static int dp = -1;
 static int nbCPUThread;
@@ -163,6 +242,8 @@ static bool serverMode = false;
 static string serverIP = "";
 static string outputFile = "";
 static bool splitWorkFile = false;
+static string tronPrivKey = "";
+static string tronPubKey = "";
 
 int main(int argc, char* argv[]) {
 
@@ -298,6 +379,14 @@ int main(int argc, char* argv[]) {
     } else if(strcmp(argv[a],"-check") == 0) {
       checkFlag = true;
       a++;
+    } else if(strcmp(argv[a],"-tronPriv") == 0) {
+      CHECKARG("-tronPriv",1);
+      tronPrivKey = string(argv[a]);
+      a++;
+    } else if(strcmp(argv[a],"-tronPub") == 0) {
+      CHECKARG("-tronPub",1);
+      tronPubKey = string(argv[a]);
+      a++;
     } else if(a == argc - 1) {
       configFile = string(argv[a]);
       a++;
@@ -317,6 +406,16 @@ int main(int argc, char* argv[]) {
     printf("Invalid gridSize or gpuId argument, must have coherent size\n");
     exit(-1);
   }
+
+  if(tronPrivKey.length() > 0 && tronPubKey.length() > 0) {
+    printf("Use either -tronPriv or -tronPub, not both\n");
+    exit(-1);
+  }
+
+  if(tronPrivKey.length() > 0)
+    printTronFromPrivateKey(secp,tronPrivKey);
+  if(tronPubKey.length() > 0)
+    printTronFromPublicKey(secp,tronPubKey);
 
   Kangaroo *v = new Kangaroo(secp,dp,gpuEnable,workFile,iWorkFile,savePeriod,saveKangaroo,saveKangarooByServer,
                              maxStep,wtimeout,port,ntimeout,serverIP,outputFile,splitWorkFile);

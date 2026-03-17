@@ -118,6 +118,11 @@ int _ConvertSMVer2Cores(int major,int minor) {
     { 0x60,  64 },
     { 0x61, 128 },
     { 0x62, 128 },
+    { 0x80,  64 },
+    { 0x86, 128 },
+    { 0x87, 128 },
+    { 0x89, 128 },
+    { 0x90, 128 },
     { 0x70,  64 },
     { 0x72,  64 },
     { 0x75,  64 },
@@ -241,7 +246,7 @@ GPUEngine::GPUEngine(int nbThreadGroup,int nbThreadPerGroup,int gpuId,uint32_t m
   for(int i=0;i<5;i++) {
     double t0 = Timer::get_tick();
     check_gpu<<<1,1>>>();
-    cudaThreadSynchronize();
+    cudaDeviceSynchronize();
     double t1 = Timer::get_tick();
     if( (t1-t0)<minT ) minT = (t1-t0);
   }

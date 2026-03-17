@@ -16,6 +16,7 @@
 */
 
 #include "Kangaroo.h"
+#include "TronAddress.h"
 #include <fstream>
 #include "SECPK1/IntGroup.h"
 #include "Timer.h"
@@ -198,6 +199,8 @@ bool Kangaroo::Output(Int *pk,char sInfo,int sType) {
   ::fprintf(f,"Key#%2d [%d%c]Pub:  0x%s \n",keyIdx,sType,sInfo,secp->GetPublicKeyHex(true,keysToSearch[keyIdx]).c_str());
   if(PR.equals(keysToSearch[keyIdx])) {
     ::fprintf(f,"       Priv: 0x%s \n",pk->GetBase16().c_str());
+    ::fprintf(f,"       TRON: %s \n",TronAddress::PublicKeyToBase58Address(PR).c_str());
+    ::fprintf(f,"    TRONHEX: 0x%s \n",TronAddress::PublicKeyToHexAddress(PR).c_str());
   } else {
     ::fprintf(f,"       Failed !\n");
     if(needToClose)

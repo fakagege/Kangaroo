@@ -50,8 +50,15 @@ Kangaroo [-v] [-t nbThread] [-d dpBit] [gpu] [-check]
  -o fileName: output result to fileName
  -l: List cuda enabled devices
  -check: Check GPU kernel vs CPU
+ -tronPriv privateKeyHex: Compute TRON address from a private key and exit
+ -tronPub publicKeyHex: Compute TRON address from a public key and exit
  inFile: intput configuration file
 ```
+
+TRON utilities derive the address from a secp256k1 public key using
+Keccak-256 + `0x41` prefix + Base58Check. The kangaroo solver itself still
+needs public keys as input; a TRON address alone cannot be used as the search
+target because it only contains a hash of the public key.
 
 Structure of the input file:
 * All values are in hex format
@@ -306,15 +313,19 @@ Visual Studio 2019 + Cuda10.2 => Take project files in VC_CUDA102\
 ## Linux
 
 Install CUDA SDK.\
-Depending on the CUDA SDK version and on your Linux distribution you may need to install an older g++ (just for the CUDA SDK).\
-Edit the makefile and set up the good CUDA SDK path and appropriate compiler for nvcc. 
+The makefile now defaults to `/usr/local/cuda` and uses your current `g++` as
+the host compiler, which works better with recent toolchains such as CUDA
+12.4. Adjust `CUDA`, `CXX`, `CXXCUDA` or `ccap` only if your setup differs.
 
 ```
-CUDA       = /usr/local/cuda-8.0
-CXXCUDA    = /usr/bin/g++-4.8
+CUDA       ?= /usr/local/cuda
+CXXCUDA    ?= $(CXX)
+ccap       ?= 89
 ```
 
-You can enter a list of architecture (refer to nvcc documentation) if you have several GPU with different architecture. Compute capability 2.0 (Fermi) is deprecated for recent CUDA SDK.
+Compute capability 2.0 (Fermi) is deprecated for recent CUDA SDK. The GPU core
+table includes newer architectures up to Ada/Hopper for better CUDA 12.x
+device reporting.
 Kangaroo need to be compiled and linked with a recent gcc (>=7). The current release has been compiled with gcc 7.3.0.\
 Go to the Kangaroo directory. ccap is the desired compute capability.
 
@@ -323,7 +334,7 @@ $ g++ -v
 gcc version 7.3.0 (Ubuntu 7.3.0-27ubuntu1~18.04)
 $ make all (for build without CUDA support)
 or
-$ make gpu=1 ccap=20 all
+$ make gpu=1 ccap=89 all
 ```
 Runnig Kangaroo (Intel(R) Xeon(R) CPU, 8 cores,  @ 2.93GHz, Quadro 600 (x2))
 
