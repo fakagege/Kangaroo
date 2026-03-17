@@ -1,0 +1,28 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Kangaroo", "Kangaroo.vcxproj", "{46ECA3B6-35DB-4545-ABC1-E6834A1D2908}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+		ReleaseSM61|x64 = ReleaseSM61|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{46ECA3B6-35DB-4545-ABC1-E6834A1D2908}.Debug|x64.ActiveCfg = Debug|x64
+		{46ECA3B6-35DB-4545-ABC1-E6834A1D2908}.Debug|x64.Build.0 = Debug|x64
+		{46ECA3B6-35DB-4545-ABC1-E6834A1D2908}.Release|x64.ActiveCfg = Release|x64
+		{46ECA3B6-35DB-4545-ABC1-E6834A1D2908}.Release|x64.Build.0 = Release|x64
+		{46ECA3B6-35DB-4545-ABC1-E6834A1D2908}.ReleaseSM61|x64.ActiveCfg = ReleaseSM61|x64
+		{46ECA3B6-35DB-4545-ABC1-E6834A1D2908}.ReleaseSM61|x64.Build.0 = ReleaseSM61|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {D181A25A-1B7B-4E99-869C-0F5E6CEB2590}
+	EndGlobalSection
+EndGlobal

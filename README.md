@@ -325,6 +325,12 @@ Here is an illustration of what's happening. When 2 paths collide they form a sh
 
 ## Windows
 
+For Visual Studio 2022 + CUDA 12.4, open `VC_CUDA124\Kangaroo.sln`.\
+This project already includes the TRON utility sources (`TronAddress.*`) and
+the TRON vanity search mode (`TronVanity.*`).\
+Use the `Release` configuration for a multi-architecture build, or
+`ReleaseSM61` if you need a smaller build targeting Pascal/Volta-era cards.\
+\
 Install CUDA SDK 10.2 and open VC_CUDA102\Kangaroo.sln in Visual C++ 2019.\
 You may need to reset your *Windows SDK version* in project properties.\
 In Build->Configuration Manager, select the *Release* configuration.\
@@ -335,6 +341,7 @@ Note: The current release has been compiled with Visual studio 2019 and CUDA SDK
 Visual Studio 2015 + Cuda 8 => Take project files in VC_CUDA8\
 Visual Sutido 2017 + Cuda 10 => Take project files in VC_CUDA10 (project files might be out of date)\
 Visual Studio 2019 + Cuda10.2 => Take project files in VC_CUDA102\
+Visual Studio 2022 + Cuda12.4 => Take project files in VC_CUDA124\
 
 ## Linux
 
