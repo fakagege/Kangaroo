@@ -349,19 +349,35 @@ __device__ bool MatchesAddress(const char address[VANITY_ADDRESS_LENGTH + 1]) {
   return true;
 }
 
-__device__ void PointAddGenerator(uint64_t px[4],uint64_t py[4]) {
-  uint64_t dx[4];
+__device__ void InvertBatch(uint64_t values[VANITY_BATCH_SIZE][4]) {
+  uint64_t prefix[VANITY_BATCH_SIZE][4];
+  uint64_t inverse[5];
+  uint64_t newValue[4];
+
+  Load256(prefix[0],values[0]);
+  for(int i = 1; i < VANITY_BATCH_SIZE; i++)
+    _ModMult(prefix[i],prefix[i - 1],values[i]);
+
+  Load256(inverse,prefix[VANITY_BATCH_SIZE - 1]);
+  inverse[4] = 0;
+  _ModInv(inverse);
+
+  for(int i = VANITY_BATCH_SIZE - 1; i > 0; i--) {
+    _ModMult(newValue,prefix[i - 1],inverse);
+    _ModMult(inverse,values[i]);
+    Load256(values[i],newValue);
+  }
+
+  Load256(values[0],inverse);
+}
+
+__device__ void PointAddGeneratorWithInv(uint64_t px[4],uint64_t py[4],const uint64_t inv[4]) {
   uint64_t dy[4];
-  uint64_t inv[5];
   uint64_t s[4];
   uint64_t p[4];
   uint64_t rx[4];
   uint64_t ry[4];
 
-  ModSub256(dx,px,(uint64_t *)VANITY_GX);
-  Load256(inv,dx);
-  inv[4] = 0;
-  _ModInv(inv);
   ModSub256(dy,py,(uint64_t *)VANITY_GY);
   _ModMult(s,dy,inv);
   _ModSqr(p,s);
@@ -377,53 +393,70 @@ __device__ void PointAddGenerator(uint64_t px[4],uint64_t py[4]) {
   Load256(py,ry);
 }
 
-__device__ void LoadState(uint64_t *states,uint64_t idx,uint64_t px[4],uint64_t py[4],uint64_t priv[4]) {
-  uint64_t *src = states + idx * VANITY_STATE_WORDS;
-  for(int i = 0; i < 4; i++) {
-    px[i] = src[i];
-    py[i] = src[4 + i];
-    priv[i] = src[8 + i];
+__device__ void LoadState(uint64_t *states,uint64_t idx,uint64_t px[VANITY_BATCH_SIZE][4],
+                          uint64_t py[VANITY_BATCH_SIZE][4],uint64_t priv[VANITY_BATCH_SIZE][4]) {
+  uint64_t *src = states + idx * VANITY_THREAD_STATE_WORDS;
+  for(int batch = 0; batch < VANITY_BATCH_SIZE; batch++) {
+    uint64_t *batchSrc = src + batch * VANITY_STATE_WORDS;
+    for(int i = 0; i < 4; i++) {
+      px[batch][i] = batchSrc[i];
+      py[batch][i] = batchSrc[4 + i];
+      priv[batch][i] = batchSrc[8 + i];
+    }
   }
 }
 
-__device__ void StoreState(uint64_t *states,uint64_t idx,const uint64_t px[4],const uint64_t py[4],const uint64_t priv[4]) {
-  uint64_t *dst = states + idx * VANITY_STATE_WORDS;
-  for(int i = 0; i < 4; i++) {
-    dst[i] = px[i];
-    dst[4 + i] = py[i];
-    dst[8 + i] = priv[i];
+__device__ void StoreState(uint64_t *states,uint64_t idx,const uint64_t px[VANITY_BATCH_SIZE][4],
+                           const uint64_t py[VANITY_BATCH_SIZE][4],const uint64_t priv[VANITY_BATCH_SIZE][4]) {
+  uint64_t *dst = states + idx * VANITY_THREAD_STATE_WORDS;
+  for(int batch = 0; batch < VANITY_BATCH_SIZE; batch++) {
+    uint64_t *batchDst = dst + batch * VANITY_STATE_WORDS;
+    for(int i = 0; i < 4; i++) {
+      batchDst[i] = px[batch][i];
+      batchDst[4 + i] = py[batch][i];
+      batchDst[8 + i] = priv[batch][i];
+    }
   }
 }
 
 __global__ void search_vanity(uint64_t *states,uint32_t maxFound,uint32_t *hitCount,GPUVanityHit *hits) {
   uint64_t idx = (uint64_t)blockIdx.x * blockDim.x + threadIdx.x;
-  uint64_t px[4];
-  uint64_t py[4];
-  uint64_t priv[4];
+  uint64_t px[VANITY_BATCH_SIZE][4];
+  uint64_t py[VANITY_BATCH_SIZE][4];
+  uint64_t priv[VANITY_BATCH_SIZE][4];
+  uint64_t dxInv[VANITY_BATCH_SIZE][4];
   unsigned char rawAddress[21];
   char address[VANITY_ADDRESS_LENGTH + 1];
 
   LoadState(states,idx,px,py,priv);
 
   for(int run = 0; run < VANITY_NB_RUN; run++) {
-    PublicKeyToTronAddress(px,py,rawAddress,address);
+    for(int batch = 0; batch < VANITY_BATCH_SIZE; batch++) {
+      PublicKeyToTronAddress(px[batch],py[batch],rawAddress,address);
 
-    if(MatchesAddress(address)) {
-      uint32_t pos = atomicAdd(hitCount,1);
-      if(pos < maxFound) {
-        for(int i = 0; i < 4; i++)
-          hits[pos].priv[i] = priv[i];
-        for(int i = 0; i < 21; i++)
-          hits[pos].rawAddress[i] = rawAddress[i];
-        for(int i = 0; i <= VANITY_ADDRESS_LENGTH; i++)
-          hits[pos].address[i] = address[i];
+      if(MatchesAddress(address)) {
+        uint32_t pos = atomicAdd(hitCount,1);
+        if(pos < maxFound) {
+          for(int i = 0; i < 4; i++)
+            hits[pos].priv[i] = priv[batch][i];
+          for(int i = 0; i < 21; i++)
+            hits[pos].rawAddress[i] = rawAddress[i];
+          for(int i = 0; i <= VANITY_ADDRESS_LENGTH; i++)
+            hits[pos].address[i] = address[i];
+        }
       }
     }
 
-    PointAddGenerator(px,py);
-    AddOne256(priv);
-    if(IsGreaterOrEqual256(priv,VANITY_ORDER))
-      SubOrder256(priv);
+    for(int batch = 0; batch < VANITY_BATCH_SIZE; batch++)
+      ModSub256(dxInv[batch],px[batch],(uint64_t *)VANITY_GX);
+    InvertBatch(dxInv);
+
+    for(int batch = 0; batch < VANITY_BATCH_SIZE; batch++) {
+      PointAddGeneratorWithInv(px[batch],py[batch],dxInv[batch]);
+      AddOne256(priv[batch]);
+      if(IsGreaterOrEqual256(priv[batch],VANITY_ORDER))
+        SubOrder256(priv[batch]);
+    }
   }
 
   StoreState(states,idx,px,py,priv);
@@ -456,10 +489,10 @@ GPUVanityEngine::GPUVanityEngine(int nbThreadGroup,int nbThreadPerGroup,int gpuI
   cudaGetDeviceProperties(&prop,gpuId);
 
   char tmp[256];
-  sprintf(tmp,"GPU #%d %s Grid(%dx%d)",gpuId,prop.name,nbThreadGroup,nbThreadPerGroup);
+  sprintf(tmp,"GPU #%d %s Grid(%dx%d) Batch(%d)",gpuId,prop.name,nbThreadGroup,nbThreadPerGroup,VANITY_BATCH_SIZE);
   deviceName = string(tmp);
 
-  err = cudaMalloc((void **)&deviceStates,(size_t)nbThread * VANITY_STATE_WORDS * sizeof(uint64_t));
+  err = cudaMalloc((void **)&deviceStates,(size_t)nbThread * VANITY_THREAD_STATE_WORDS * sizeof(uint64_t));
   if(err != cudaSuccess)
     return;
 
@@ -506,8 +539,9 @@ bool GPUVanityEngine::InitStates(Secp256K1 *secp,uint64_t seed) {
     return false;
 
   mt19937_64 rng(seed);
-  vector<Int> privKeys(nbThread);
-  for(int i = 0; i < nbThread; i++) {
+  int totalStates = nbThread * VANITY_BATCH_SIZE;
+  vector<Int> privKeys(totalStates);
+  for(int i = 0; i < totalStates; i++) {
     do {
       privKeys[i].SetInt32(0);
       privKeys[i].SetQWord(0,rng());
@@ -521,13 +555,17 @@ bool GPUVanityEngine::InitStates(Secp256K1 *secp,uint64_t seed) {
   }
 
   vector<Point> pubKeys = secp->ComputePublicKeys(privKeys);
-  vector<uint64_t> hostStates((size_t)nbThread * VANITY_STATE_WORDS);
+  vector<uint64_t> hostStates((size_t)nbThread * VANITY_THREAD_STATE_WORDS);
   for(int i = 0; i < nbThread; i++) {
-    uint64_t *dst = &hostStates[(size_t)i * VANITY_STATE_WORDS];
-    for(int j = 0; j < 4; j++) {
-      dst[j] = pubKeys[i].x.bits64[j];
-      dst[4 + j] = pubKeys[i].y.bits64[j];
-      dst[8 + j] = privKeys[i].bits64[j];
+    uint64_t *dst = &hostStates[(size_t)i * VANITY_THREAD_STATE_WORDS];
+    for(int batch = 0; batch < VANITY_BATCH_SIZE; batch++) {
+      int stateIdx = i * VANITY_BATCH_SIZE + batch;
+      uint64_t *batchDst = dst + batch * VANITY_STATE_WORDS;
+      for(int j = 0; j < 4; j++) {
+        batchDst[j] = pubKeys[stateIdx].x.bits64[j];
+        batchDst[4 + j] = pubKeys[stateIdx].y.bits64[j];
+        batchDst[8 + j] = privKeys[stateIdx].bits64[j];
+      }
     }
   }
 
@@ -570,7 +608,7 @@ bool GPUVanityEngine::Search(std::vector<GPUVanityHit> &hits,uint64_t *processed
   }
 
   if(processed)
-    *processed = (uint64_t)nbThread * (uint64_t)VANITY_NB_RUN;
+    *processed = (uint64_t)nbThread * (uint64_t)VANITY_BATCH_SIZE * (uint64_t)VANITY_NB_RUN;
 
   return true;
 }

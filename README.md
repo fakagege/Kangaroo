@@ -75,6 +75,11 @@ If you do not pass `-t`, the program uses all online CPU threads automatically.
 If you do not pass `-gpuId`, the CUDA build uses all detected GPUs
 automatically.
 
+The current GPU vanity kernel already applies a first practical optimization:
+each CUDA thread scans a small batch of consecutive keys and updates them with a
+single batched modular inversion, which is materially faster than doing one
+inverse per checked address.
+
 When you use repeated-tail mode (`-lianghao N` or `-l N`), hits are also
 written into an auto-classified directory. By default it is `tron_hits/`, or
 you can override it with `-tronDir some_dir`.
