@@ -58,7 +58,7 @@ __device__ __constant__ uint64_t _O[] = { 0xBFD25E8CD0364141ULL,0xBAAEDCE6AF48A0
 #endif
 
 
-#define HSIZE (GRP_SIZE / 2 - 1)
+#define HSIZE (GPU_GRP_SIZE / 2 - 1)
 
 // 64bits lsb negative inverse of P (mod 2^64)
 #define MM64 0xD838091DD2253531ULL

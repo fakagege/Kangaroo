@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "../Timer.h"
+#include "GPUEngine.h"
 #include "GPUMath.h"
 
 using namespace std;
@@ -371,7 +372,7 @@ __device__ void InvertBatch(uint64_t values[VANITY_BATCH_SIZE][4]) {
   Load256(values[0],inverse);
 }
 
-__device__ void PointAddGeneratorWithInv(uint64_t px[4],uint64_t py[4],const uint64_t inv[4]) {
+__device__ void PointAddGeneratorWithInv(uint64_t px[4],uint64_t py[4],uint64_t inv[4]) {
   uint64_t dy[4];
   uint64_t s[4];
   uint64_t p[4];
