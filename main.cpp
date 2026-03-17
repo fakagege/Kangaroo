@@ -72,6 +72,8 @@ void printUsage() {
   printf(" -tronSuffix text: Search TRON addresses ending with text\n");
   printf(" -tronCount n: Stop after n vanity hits (default 1)\n");
   printf(" -tronDir dir: Directory used for auto-classified repeated-tail hits\n");
+  printf("   TRON vanity mode uses all CUDA GPUs automatically when available,\n");
+  printf("   otherwise it falls back to CPU threads; -gpuId and -g still apply.\n");
   printf(" inFile: intput configuration file\n");
   exit(0);
 
@@ -243,6 +245,7 @@ static string configFile = "";
 static bool checkFlag = false;
 static bool gpuEnable = false;
 static vector<int> gpuId = { 0 };
+static bool gpuIdProvided = false;
 static vector<int> gridSize;
 static string workFile = "";
 static string checkWorkFile = "";
@@ -401,6 +404,7 @@ int main(int argc, char* argv[]) {
     } else if(strcmp(argv[a],"-gpuId") == 0) {
       CHECKARG("-gpuId",1);
       getInts("gpuId",gpuId,string(argv[a]),',');
+      gpuIdProvided = true;
       a++;
     } else if(strcmp(argv[a],"-g") == 0) {
       CHECKARG("-g",1);
@@ -484,8 +488,9 @@ int main(int argc, char* argv[]) {
     cfg.suffix = tronSuffix;
     cfg.outputFile = outputFile;
     cfg.classifyDir = tronClassifyDir;
-    if(gpuEnable)
-      printf("Warning: TRON vanity mode is currently CPU-only, ignoring -gpu\n");
+    cfg.gpuIdsProvided = gpuIdProvided;
+    cfg.gpuIds = gpuId;
+    cfg.gridSize = gridSize;
     if(!TronVanity::Run(secp,cfg))
       exit(-1);
     exit(0);

@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <string>
+#include <vector>
 #include "SECPK1/SECP256k1.h"
 
 typedef struct {
@@ -13,6 +14,9 @@ typedef struct {
   std::string suffix;
   std::string outputFile;
   std::string classifyDir;
+  bool gpuIdsProvided;
+  std::vector<int> gpuIds;
+  std::vector<int> gridSize;
 } TRON_VANITY_CONFIG;
 
 namespace TronVanity {

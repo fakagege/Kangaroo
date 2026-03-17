@@ -9,7 +9,7 @@ SRC = SECPK1/IntGroup.cpp main.cpp SECPK1/Random.cpp \
       Timer.cpp SECPK1/Int.cpp SECPK1/IntMod.cpp \
       SECPK1/Point.cpp SECPK1/SECP256K1.cpp \
       TronAddress.cpp TronVanity.cpp \
-      GPU/GPUEngine.o Kangaroo.cpp HashTable.cpp \
+      GPU/GPUEngine.o GPU/GPUVanityEngine.o Kangaroo.cpp HashTable.cpp \
       Backup.cpp Thread.cpp Check.cpp Network.cpp Merge.cpp PartMerge.cpp
 
 OBJDIR = obj
@@ -19,7 +19,7 @@ OBJET = $(addprefix $(OBJDIR)/, \
       Timer.o SECPK1/Int.o SECPK1/IntMod.o \
       SECPK1/Point.o SECPK1/SECP256K1.o \
       TronAddress.o TronVanity.o \
-      GPU/GPUEngine.o Kangaroo.o HashTable.o Thread.o \
+      GPU/GPUEngine.o GPU/GPUVanityEngine.o Kangaroo.o HashTable.o Thread.o \
       Backup.o Check.o Network.o Merge.o PartMerge.o)
 
 else
@@ -75,9 +75,13 @@ ifdef gpu
 ifdef debug
 $(OBJDIR)/GPU/GPUEngine.o: GPU/GPUEngine.cu
 	$(NVCC) -std=c++11 -G -maxrregcount=0 --ptxas-options=-v --compile --compiler-options -fPIC -ccbin $(CXXCUDA) -m64 -g -I$(CUDA)/include -gencode=arch=compute_$(ccap),code=sm_$(ccap) -o $(OBJDIR)/GPU/GPUEngine.o -c GPU/GPUEngine.cu
+$(OBJDIR)/GPU/GPUVanityEngine.o: GPU/GPUVanityEngine.cu
+	$(NVCC) -std=c++11 -G -maxrregcount=0 --ptxas-options=-v --compile --compiler-options -fPIC -ccbin $(CXXCUDA) -m64 -g -I$(CUDA)/include -gencode=arch=compute_$(ccap),code=sm_$(ccap) -o $(OBJDIR)/GPU/GPUVanityEngine.o -c GPU/GPUVanityEngine.cu
 else
 $(OBJDIR)/GPU/GPUEngine.o: GPU/GPUEngine.cu
 	$(NVCC) -std=c++11 -maxrregcount=0 --ptxas-options=-v --compile --compiler-options -fPIC -ccbin $(CXXCUDA) -m64 -O2 -I$(CUDA)/include -gencode=arch=compute_$(ccap),code=sm_$(ccap) -o $(OBJDIR)/GPU/GPUEngine.o -c GPU/GPUEngine.cu
+$(OBJDIR)/GPU/GPUVanityEngine.o: GPU/GPUVanityEngine.cu
+	$(NVCC) -std=c++11 -maxrregcount=0 --ptxas-options=-v --compile --compiler-options -fPIC -ccbin $(CXXCUDA) -m64 -O2 -I$(CUDA)/include -gencode=arch=compute_$(ccap),code=sm_$(ccap) -o $(OBJDIR)/GPU/GPUVanityEngine.o -c GPU/GPUVanityEngine.cu
 endif
 endif
 

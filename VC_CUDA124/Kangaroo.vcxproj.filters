@@ -58,6 +58,9 @@
     <ClInclude Include="..\GPU\GPUEngine.h">
       <Filter>GPU</Filter>
     </ClInclude>
+    <ClInclude Include="..\GPU\GPUVanityEngine.h">
+      <Filter>GPU</Filter>
+    </ClInclude>
     <ClInclude Include="..\GPU\GPUMath.h">
       <Filter>GPU</Filter>
     </ClInclude>
@@ -86,6 +89,9 @@
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="..\GPU\GPUEngine.cu">
+      <Filter>GPU</Filter>
+    </CudaCompile>
+    <CudaCompile Include="..\GPU\GPUVanityEngine.cu">
       <Filter>GPU</Filter>
     </CudaCompile>
   </ItemGroup>

@@ -22,6 +22,12 @@
 #include "Timer.h"
 #include "TronAddress.h"
 
+#ifdef WITHGPU
+#include <cuda_runtime.h>
+#include "GPU/GPUEngine.h"
+#include "GPU/GPUVanityEngine.h"
+#endif
+
 using namespace std;
 
 namespace {
@@ -82,6 +88,26 @@ string padHex64(const string &hex) {
   if(hex.length() >= 64)
     return hex;
   return string(64 - hex.length(),'0') + hex;
+}
+
+string bytesToHex(const unsigned char *data,size_t size) {
+  static const char *hex = "0123456789ABCDEF";
+  string out;
+  out.reserve(size * 2);
+  for(size_t i = 0; i < size; i++) {
+    out.push_back(hex[data[i] >> 4]);
+    out.push_back(hex[data[i] & 0x0F]);
+  }
+  return out;
+}
+
+string privWordsToHex(const uint64_t priv[4]) {
+  Int value;
+  value.SetInt32(0);
+  for(int i = 0; i < 4; i++)
+    value.bits64[i] = priv[i];
+  value.bits64[4] = 0;
+  return padHex64(value.GetBase16());
 }
 
 bool writeHit(const TRON_VANITY_CONFIG &config,const string &text) {
@@ -200,6 +226,24 @@ void writeClassifiedHit(const TRON_VANITY_CONFIG &config,const string &pair,cons
     appendLine(joinPath(classifyDir,*it),pair);
 }
 
+void printConfigBanner(const TRON_VANITY_CONFIG &config,const char *modeName) {
+  printf("TRON vanity mode (%s)\n",modeName);
+  printf("Threads     : %d\n",config.nbThread);
+  if(config.prefix.length() > 0)
+    printf("Prefix      : %s\n",config.prefix.c_str());
+  if(config.suffix.length() > 0)
+    printf("Suffix      : %s\n",config.suffix.c_str());
+  if(config.repeatTailLength > 0)
+    printf("Repeat tail : %d same chars\n",config.repeatTailLength);
+  printf("Need found  : %" PRIu64 "\n",config.maxFound);
+  if(config.outputFile.length() > 0)
+    printf("Output file : %s\n",config.outputFile.c_str());
+  if(config.repeatTailLength > 0) {
+    string classifyDir = config.classifyDir.length() > 0 ? config.classifyDir : DEFAULT_CLASSIFY_DIR;
+    printf("Classify dir: %s\n",classifyDir.c_str());
+  }
+}
+
 void printHit(TRON_VANITY_STATE *state,uint64_t foundIndex,const string &address,const string &hexAddress,const string &privateKeyHex) {
 
   string pair = address + "---" + privateKeyHex;
@@ -237,7 +281,7 @@ void fillRandomPrivateKey(Int *privKey,mt19937_64 &rng,Int *order) {
 
 }
 
-void worker(TRON_VANITY_STATE *state,int threadId) {
+void cpuWorker(TRON_VANITY_STATE *state,int threadId) {
 
   uint64_t seed = ((uint64_t)Timer::getPID() << 32) ^
                   (uint64_t)chrono::high_resolution_clock::now().time_since_epoch().count() ^
@@ -265,6 +309,187 @@ void worker(TRON_VANITY_STATE *state,int threadId) {
   }
 
 }
+
+bool runCPU(TRON_VANITY_STATE *state) {
+
+  printConfigBanner(state->config,"CPU");
+
+  vector<thread> workers;
+  workers.reserve(state->config.nbThread);
+  for(int i = 0; i < state->config.nbThread; i++)
+    workers.push_back(thread(cpuWorker,state,i));
+
+  double lastTick = Timer::get_tick();
+  uint64_t lastCount = 0;
+  while(!state->stop.load(memory_order_relaxed)) {
+    Timer::SleepMillis(1000);
+    double now = Timer::get_tick();
+    uint64_t count = state->totalTried.load(memory_order_relaxed);
+    double dt = now - lastTick;
+    if(dt <= 0.0)
+      dt = 1.0;
+    double speed = (double)(count - lastCount) / dt;
+    printf("\r[%.2f Addr/s][Total %" PRIu64 "][Found %" PRIu64 "]",
+      speed,count,state->foundCount.load(memory_order_relaxed));
+    fflush(stdout);
+    lastTick = now;
+    lastCount = count;
+  }
+
+  for(size_t i = 0; i < workers.size(); i++)
+    workers[i].join();
+
+  printf("\nDone. Tried %" PRIu64 " addresses, found %" PRIu64 "\n",
+    state->totalTried.load(memory_order_relaxed),state->foundCount.load(memory_order_relaxed));
+
+  return state->foundCount.load(memory_order_relaxed) > 0;
+
+}
+
+#ifdef WITHGPU
+
+int getCudaDeviceCount() {
+  int deviceCount = 0;
+  cudaError_t err = cudaGetDeviceCount(&deviceCount);
+  if(err != cudaSuccess)
+    return 0;
+  return deviceCount;
+}
+
+bool resolveGpuConfig(const TRON_VANITY_CONFIG &config,vector<int> &deviceIds,vector<int> &grids) {
+
+  int deviceCount = getCudaDeviceCount();
+  if(deviceCount <= 0)
+    return false;
+
+  if(config.gpuIdsProvided) {
+    deviceIds = config.gpuIds;
+  } else {
+    deviceIds.clear();
+    for(int i = 0; i < deviceCount; i++)
+      deviceIds.push_back(i);
+  }
+
+  grids.clear();
+  if(config.gridSize.size() == (deviceIds.size() * 2)) {
+    grids = config.gridSize;
+  } else {
+    for(size_t i = 0; i < deviceIds.size(); i++) {
+      int gx = 0;
+      int gy = 0;
+      if(!GPUEngine::GetGridSize(deviceIds[i],&gx,&gy))
+        return false;
+      grids.push_back(gx);
+      grids.push_back(gy);
+    }
+  }
+
+  return deviceIds.size() > 0;
+
+}
+
+bool runGPU(Secp256K1 *secp,TRON_VANITY_STATE *state) {
+
+  vector<int> deviceIds;
+  vector<int> grids;
+  if(!resolveGpuConfig(state->config,deviceIds,grids))
+    return false;
+
+  atomic<int> activeWorkers((int)deviceIds.size());
+  atomic<int> readyWorkers(0);
+  vector<thread> workers;
+  workers.reserve(deviceIds.size());
+
+  printConfigBanner(state->config,"GPU");
+
+  for(size_t i = 0; i < deviceIds.size(); i++) {
+    int deviceId = deviceIds[i];
+    int gx = grids[i * 2];
+    int gy = grids[i * 2 + 1];
+    workers.push_back(thread([&, deviceId, gx, gy, i]() {
+      uint64_t seed = ((uint64_t)Timer::getPID() << 32) ^
+                      (uint64_t)chrono::high_resolution_clock::now().time_since_epoch().count() ^
+                      (uint64_t)(deviceId + 1) * 0xD2B74407B1CE6E93ULL;
+
+      GPUVanityEngine engine(gx,gy,deviceId,(uint32_t)min<uint64_t>(state->config.maxFound,65535),
+                             state->config.prefix,state->config.suffix,state->config.repeatTailLength);
+      if(!engine.IsInitialised() || !engine.InitStates(secp,seed)) {
+        lock_guard<mutex> lock(state->outputMutex);
+        printf("GPU init failed on device %d, worker disabled\n",deviceId);
+        activeWorkers.fetch_sub(1,memory_order_relaxed);
+        if(activeWorkers.load(memory_order_relaxed) == 0)
+          state->stop.store(true,memory_order_relaxed);
+        return;
+      }
+
+      {
+        lock_guard<mutex> lock(state->outputMutex);
+        printf("GPU        : %s\n",engine.deviceName.c_str());
+      }
+
+      readyWorkers.fetch_add(1,memory_order_relaxed);
+
+      while(!state->stop.load(memory_order_relaxed)) {
+        vector<GPUVanityHit> hits;
+        uint64_t processed = 0;
+        if(!engine.Search(hits,&processed)) {
+          lock_guard<mutex> lock(state->outputMutex);
+          printf("GPU search failed on device %d, worker stopped\n",deviceId);
+          break;
+        }
+
+        state->totalTried.fetch_add(processed,memory_order_relaxed);
+
+        for(size_t hitIdx = 0; hitIdx < hits.size(); hitIdx++) {
+          uint64_t foundIndex = state->foundCount.fetch_add(1,memory_order_relaxed) + 1;
+          if(foundIndex <= state->config.maxFound) {
+            printHit(state,foundIndex,string(hits[hitIdx].address),
+                     bytesToHex(hits[hitIdx].rawAddress,VANITY_RAW_ADDRESS_LENGTH),
+                     privWordsToHex(hits[hitIdx].priv));
+          }
+          if(foundIndex >= state->config.maxFound) {
+            state->stop.store(true,memory_order_relaxed);
+            break;
+          }
+        }
+      }
+
+      activeWorkers.fetch_sub(1,memory_order_relaxed);
+      if(activeWorkers.load(memory_order_relaxed) == 0)
+        state->stop.store(true,memory_order_relaxed);
+    }));
+  }
+
+  double lastTick = Timer::get_tick();
+  uint64_t lastCount = 0;
+  while(!state->stop.load(memory_order_relaxed)) {
+    Timer::SleepMillis(1000);
+    double now = Timer::get_tick();
+    uint64_t count = state->totalTried.load(memory_order_relaxed);
+    double dt = now - lastTick;
+    if(dt <= 0.0)
+      dt = 1.0;
+    double speed = (double)(count - lastCount) / dt;
+    printf("\r[%.2f Addr/s][Total %" PRIu64 "][Found %" PRIu64 "][GPU %d/%d]",
+      speed,count,state->foundCount.load(memory_order_relaxed),
+      readyWorkers.load(memory_order_relaxed),(int)deviceIds.size());
+    fflush(stdout);
+    lastTick = now;
+    lastCount = count;
+  }
+
+  for(size_t i = 0; i < workers.size(); i++)
+    workers[i].join();
+
+  printf("\nDone. Tried %" PRIu64 " addresses, found %" PRIu64 "\n",
+    state->totalTried.load(memory_order_relaxed),state->foundCount.load(memory_order_relaxed));
+
+  return readyWorkers.load(memory_order_relaxed) > 0 &&
+         state->foundCount.load(memory_order_relaxed) > 0;
+
+}
+
+#endif
 
 bool isConfigValid(const TRON_VANITY_CONFIG &config) {
 
@@ -342,51 +567,17 @@ bool Run(Secp256K1 *secp,const TRON_VANITY_CONFIG &config) {
   state.foundCount.store(0);
   state.stop.store(false);
 
-  printf("TRON vanity mode\n");
-  printf("Threads     : %d\n",config.nbThread);
-  if(config.prefix.length() > 0)
-    printf("Prefix      : %s\n",config.prefix.c_str());
-  if(config.suffix.length() > 0)
-    printf("Suffix      : %s\n",config.suffix.c_str());
-  if(config.repeatTailLength > 0)
-    printf("Repeat tail : %d same chars\n",config.repeatTailLength);
-  printf("Need found  : %" PRIu64 "\n",config.maxFound);
-  if(config.outputFile.length() > 0)
-    printf("Output file : %s\n",config.outputFile.c_str());
-  if(config.repeatTailLength > 0) {
-    string classifyDir = config.classifyDir.length() > 0 ? config.classifyDir : DEFAULT_CLASSIFY_DIR;
-    printf("Classify dir: %s\n",classifyDir.c_str());
-  }
+#ifdef WITHGPU
+  if(runGPU(secp,&state))
+    return true;
 
-  vector<thread> workers;
-  workers.reserve(config.nbThread);
-  for(int i = 0; i < config.nbThread; i++)
-    workers.push_back(thread(worker,&state,i));
+  state.totalTried.store(0);
+  state.foundCount.store(0);
+  state.stop.store(false);
+  printf("Falling back to CPU search\n");
+#endif
 
-  double lastTick = Timer::get_tick();
-  uint64_t lastCount = 0;
-  while(!state.stop.load(memory_order_relaxed)) {
-    Timer::SleepMillis(1000);
-    double now = Timer::get_tick();
-    uint64_t count = state.totalTried.load(memory_order_relaxed);
-    double dt = now - lastTick;
-    if(dt <= 0.0)
-      dt = 1.0;
-    double speed = (double)(count - lastCount) / dt;
-    printf("\r[%.2f Addr/s][Total %" PRIu64 "][Found %" PRIu64 "]",
-      speed,count,state.foundCount.load(memory_order_relaxed));
-    fflush(stdout);
-    lastTick = now;
-    lastCount = count;
-  }
-
-  for(size_t i = 0; i < workers.size(); i++)
-    workers[i].join();
-
-  printf("\nDone. Tried %" PRIu64 " addresses, found %" PRIu64 "\n",
-    state.totalTried.load(memory_order_relaxed),state.foundCount.load(memory_order_relaxed));
-
-  return state.foundCount.load(memory_order_relaxed) > 0;
+  return runCPU(&state);
 
 }
 

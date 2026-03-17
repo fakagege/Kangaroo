@@ -65,9 +65,11 @@ Keccak-256 + `0x41` prefix + Base58Check. The kangaroo solver itself still
 needs public keys as input; a TRON address alone cannot be used as the search
 target because it only contains a hash of the public key.
 
-TRON vanity mode is currently CPU-only. It reuses the same secp256k1 engine to
-generate random private keys and checks the resulting TRON Base58 address
-against your requested prefix/suffix rules.
+TRON vanity mode now prefers CUDA automatically: if the binary is built with
+GPU support and CUDA devices are available, it will load all GPUs by default.
+If no CUDA device is found (or the binary was built without CUDA support), it
+falls back to CPU threads automatically. You can still restrict devices with
+`-gpuId` and override grid sizes with `-g`.
 
 When you use repeated-tail mode (`-lianghao N` or `-l N`), hits are also
 written into an auto-classified directory. By default it is `tron_hits/`, or
@@ -101,6 +103,7 @@ Examples:
 ```bash
 ./kangaroo -lianghao 8 -t 8
 ./kangaroo -l 8 -t 8
+./kangaroo -l 8 -gpuId 0,1 -g 160,256,160,256
 ./kangaroo -tronPrefix TGf9wUdQzmSJbwLxC8vSV9NMsX -tronSuffix uuuuuuuu -t 8
 ```
 
