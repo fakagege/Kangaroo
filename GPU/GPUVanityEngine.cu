@@ -14,6 +14,13 @@ using namespace std;
 
 namespace {
 
+string FormatCudaError(const char *where,cudaError_t err) {
+  string msg(where);
+  msg += ": ";
+  msg += cudaGetErrorString(err);
+  return msg;
+}
+
 __device__ __constant__ uint64_t VANITY_GX[4] = {
   0x59F2815B16F81798ULL,0x029BFCDB2DCE28D9ULL,0x55A06295CE870B07ULL,0x79BE667EF9DCBBACULL
 };
@@ -473,37 +480,60 @@ GPUVanityEngine::GPUVanityEngine(int nbThreadGroup,int nbThreadPerGroup,int gpuI
   this->nbThread = nbThreadGroup * nbThreadPerGroup;
   this->maxFound = maxFound;
   this->initialised = false;
+  this->lastError = "uninitialized";
   this->deviceStates = NULL;
   this->deviceHits = NULL;
   this->deviceHitCount = NULL;
 
   int deviceCount = 0;
   cudaError_t err = cudaGetDeviceCount(&deviceCount);
-  if(err != cudaSuccess || deviceCount == 0 || gpuId >= deviceCount)
+  if(err != cudaSuccess) {
+    lastError = FormatCudaError("cudaGetDeviceCount",err);
     return;
+  }
+  if(deviceCount == 0) {
+    lastError = "No CUDA device found";
+    return;
+  }
+  if(gpuId >= deviceCount) {
+    lastError = "Requested gpuId is out of range";
+    return;
+  }
 
   err = cudaSetDevice(gpuId);
-  if(err != cudaSuccess)
+  if(err != cudaSuccess) {
+    lastError = FormatCudaError("cudaSetDevice",err);
     return;
+  }
 
   cudaDeviceProp prop;
-  cudaGetDeviceProperties(&prop,gpuId);
+  err = cudaGetDeviceProperties(&prop,gpuId);
+  if(err != cudaSuccess) {
+    lastError = FormatCudaError("cudaGetDeviceProperties",err);
+    return;
+  }
 
   char tmp[256];
   sprintf(tmp,"GPU #%d %s Grid(%dx%d) Batch(%d)",gpuId,prop.name,nbThreadGroup,nbThreadPerGroup,VANITY_BATCH_SIZE);
   deviceName = string(tmp);
 
   err = cudaMalloc((void **)&deviceStates,(size_t)nbThread * VANITY_THREAD_STATE_WORDS * sizeof(uint64_t));
-  if(err != cudaSuccess)
+  if(err != cudaSuccess) {
+    lastError = FormatCudaError("cudaMalloc(deviceStates)",err);
     return;
+  }
 
   err = cudaMalloc((void **)&deviceHits,(size_t)maxFound * sizeof(GPUVanityHit));
-  if(err != cudaSuccess)
+  if(err != cudaSuccess) {
+    lastError = FormatCudaError("cudaMalloc(deviceHits)",err);
     return;
+  }
 
   err = cudaMalloc((void **)&deviceHitCount,sizeof(uint32_t));
-  if(err != cudaSuccess)
+  if(err != cudaSuccess) {
+    lastError = FormatCudaError("cudaMalloc(deviceHitCount)",err);
     return;
+  }
 
   char prefixBuff[VANITY_ADDRESS_LENGTH + 1];
   char suffixBuff[VANITY_ADDRESS_LENGTH + 1];
@@ -515,13 +545,34 @@ GPUVanityEngine::GPUVanityEngine(int nbThreadGroup,int nbThreadPerGroup,int gpuI
   uint32_t suffixLen = (uint32_t)suffix.length();
   uint32_t repeatTail = (uint32_t)repeatTailLength;
 
-  cudaMemcpyToSymbol(VANITY_PREFIX,prefixBuff,sizeof(prefixBuff));
-  cudaMemcpyToSymbol(VANITY_SUFFIX,suffixBuff,sizeof(suffixBuff));
-  cudaMemcpyToSymbol(VANITY_PREFIX_LEN,&prefixLen,sizeof(prefixLen));
-  cudaMemcpyToSymbol(VANITY_SUFFIX_LEN,&suffixLen,sizeof(suffixLen));
-  cudaMemcpyToSymbol(VANITY_REPEAT_TAIL_LEN,&repeatTail,sizeof(repeatTail));
+  err = cudaMemcpyToSymbol(VANITY_PREFIX,prefixBuff,sizeof(prefixBuff));
+  if(err != cudaSuccess) {
+    lastError = FormatCudaError("cudaMemcpyToSymbol(VANITY_PREFIX)",err);
+    return;
+  }
+  err = cudaMemcpyToSymbol(VANITY_SUFFIX,suffixBuff,sizeof(suffixBuff));
+  if(err != cudaSuccess) {
+    lastError = FormatCudaError("cudaMemcpyToSymbol(VANITY_SUFFIX)",err);
+    return;
+  }
+  err = cudaMemcpyToSymbol(VANITY_PREFIX_LEN,&prefixLen,sizeof(prefixLen));
+  if(err != cudaSuccess) {
+    lastError = FormatCudaError("cudaMemcpyToSymbol(VANITY_PREFIX_LEN)",err);
+    return;
+  }
+  err = cudaMemcpyToSymbol(VANITY_SUFFIX_LEN,&suffixLen,sizeof(suffixLen));
+  if(err != cudaSuccess) {
+    lastError = FormatCudaError("cudaMemcpyToSymbol(VANITY_SUFFIX_LEN)",err);
+    return;
+  }
+  err = cudaMemcpyToSymbol(VANITY_REPEAT_TAIL_LEN,&repeatTail,sizeof(repeatTail));
+  if(err != cudaSuccess) {
+    lastError = FormatCudaError("cudaMemcpyToSymbol(VANITY_REPEAT_TAIL_LEN)",err);
+    return;
+  }
 
-  initialised = cudaGetLastError() == cudaSuccess;
+  initialised = true;
+  lastError.clear();
 }
 
 GPUVanityEngine::~GPUVanityEngine() {
@@ -536,8 +587,10 @@ bool GPUVanityEngine::InitStates(Secp256K1 *secp,uint64_t seed) {
     return false;
 
   cudaError_t err = cudaSetDevice(gpuId);
-  if(err != cudaSuccess)
+  if(err != cudaSuccess) {
+    lastError = FormatCudaError("cudaSetDevice",err);
     return false;
+  }
 
   mt19937_64 rng(seed);
   int totalStates = nbThread * VANITY_BATCH_SIZE;
@@ -571,6 +624,8 @@ bool GPUVanityEngine::InitStates(Secp256K1 *secp,uint64_t seed) {
   }
 
   err = cudaMemcpy(deviceStates,&hostStates[0],hostStates.size() * sizeof(uint64_t),cudaMemcpyHostToDevice);
+  if(err != cudaSuccess)
+    lastError = FormatCudaError("cudaMemcpy(deviceStates)",err);
   return err == cudaSuccess;
 }
 
@@ -582,30 +637,40 @@ bool GPUVanityEngine::Search(std::vector<GPUVanityHit> &hits,uint64_t *processed
     return false;
 
   cudaError_t err = cudaSetDevice(gpuId);
-  if(err != cudaSuccess)
+  if(err != cudaSuccess) {
+    lastError = FormatCudaError("cudaSetDevice",err);
     return false;
+  }
 
   err = cudaMemset(deviceHitCount,0,sizeof(uint32_t));
-  if(err != cudaSuccess)
+  if(err != cudaSuccess) {
+    lastError = FormatCudaError("cudaMemset(deviceHitCount)",err);
     return false;
+  }
 
   search_vanity<<<nbThread / nbThreadPerGroup,nbThreadPerGroup>>>(deviceStates,maxFound,deviceHitCount,deviceHits);
   err = cudaDeviceSynchronize();
-  if(err != cudaSuccess)
+  if(err != cudaSuccess) {
+    lastError = FormatCudaError("search_vanity kernel",err);
     return false;
+  }
 
   uint32_t count = 0;
   err = cudaMemcpy(&count,deviceHitCount,sizeof(uint32_t),cudaMemcpyDeviceToHost);
-  if(err != cudaSuccess)
+  if(err != cudaSuccess) {
+    lastError = FormatCudaError("cudaMemcpy(hitCount)",err);
     return false;
+  }
 
   if(count > maxFound)
     count = maxFound;
   if(count > 0) {
     hits.resize(count);
     err = cudaMemcpy(&hits[0],deviceHits,(size_t)count * sizeof(GPUVanityHit),cudaMemcpyDeviceToHost);
-    if(err != cudaSuccess)
+    if(err != cudaSuccess) {
+      lastError = FormatCudaError("cudaMemcpy(hits)",err);
       return false;
+    }
   }
 
   if(processed)
@@ -620,4 +685,8 @@ int GPUVanityEngine::GetNbThread() const {
 
 bool GPUVanityEngine::IsInitialised() const {
   return initialised;
+}
+
+const std::string &GPUVanityEngine::GetLastError() const {
+  return lastError;
 }

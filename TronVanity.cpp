@@ -447,7 +447,7 @@ bool runGPU(Secp256K1 *secp,TRON_VANITY_STATE *state) {
                              state->config.prefix,state->config.suffix,state->config.repeatTailLength);
       if(!engine.IsInitialised() || !engine.InitStates(secp,seed)) {
         lock_guard<mutex> lock(state->outputMutex);
-        printf("GPU init failed on device %d, worker disabled\n",deviceId);
+        printf("GPU init failed on device %d: %s\n",deviceId,engine.GetLastError().c_str());
         activeWorkers.fetch_sub(1,memory_order_relaxed);
         if(activeWorkers.load(memory_order_relaxed) == 0)
           state->stop.store(true,memory_order_relaxed);
@@ -466,7 +466,7 @@ bool runGPU(Secp256K1 *secp,TRON_VANITY_STATE *state) {
         uint64_t processed = 0;
         if(!engine.Search(hits,&processed)) {
           lock_guard<mutex> lock(state->outputMutex);
-          printf("GPU search failed on device %d, worker stopped\n",deviceId);
+          printf("GPU search failed on device %d: %s\n",deviceId,engine.GetLastError().c_str());
           break;
         }
 

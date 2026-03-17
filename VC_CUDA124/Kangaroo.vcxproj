@@ -54,7 +54,7 @@
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="..\GPU\GPUEngine.cu">
-      <CodeGeneration Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">compute_89,sm_89</CodeGeneration>
+      <CodeGeneration Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">compute_61,sm_61;compute_75,sm_75;compute_86,sm_86;compute_89,sm_89;compute_90,sm_90</CodeGeneration>
       <CodeGeneration Condition="'$(Configuration)|$(Platform)'=='Release|x64'">compute_61,sm_61;compute_75,sm_75;compute_86,sm_86;compute_89,sm_89;compute_90,sm_90</CodeGeneration>
       <CodeGeneration Condition="'$(Configuration)|$(Platform)'=='ReleaseSM61|x64'">compute_61,sm_61</CodeGeneration>
       <PtxAsOptionV Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</PtxAsOptionV>
@@ -62,7 +62,7 @@
       <NvccCompilation Condition="'$(Configuration)|$(Platform)'=='ReleaseSM61|x64'">compile</NvccCompilation>
     </CudaCompile>
     <CudaCompile Include="..\GPU\GPUVanityEngine.cu">
-      <CodeGeneration Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">compute_89,sm_89</CodeGeneration>
+      <CodeGeneration Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">compute_61,sm_61;compute_75,sm_75;compute_86,sm_86;compute_89,sm_89;compute_90,sm_90</CodeGeneration>
       <CodeGeneration Condition="'$(Configuration)|$(Platform)'=='Release|x64'">compute_61,sm_61;compute_75,sm_75;compute_86,sm_86;compute_89,sm_89;compute_90,sm_90</CodeGeneration>
       <CodeGeneration Condition="'$(Configuration)|$(Platform)'=='ReleaseSM61|x64'">compute_61,sm_61</CodeGeneration>
       <PtxAsOptionV Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</PtxAsOptionV>

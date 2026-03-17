@@ -32,6 +32,7 @@ public:
   bool Search(std::vector<GPUVanityHit> &hits,uint64_t *processed);
   int GetNbThread() const;
   bool IsInitialised() const;
+  const std::string &GetLastError() const;
   std::string deviceName;
 
 private:
@@ -41,6 +42,7 @@ private:
   int nbThreadPerGroup;
   uint32_t maxFound;
   bool initialised;
+  std::string lastError;
   uint64_t *deviceStates;
   GPUVanityHit *deviceHits;
   uint32_t *deviceHitCount;
