@@ -71,6 +71,10 @@ If no CUDA device is found (or the binary was built without CUDA support), it
 falls back to CPU threads automatically. You can still restrict devices with
 `-gpuId` and override grid sizes with `-g`.
 
+If you do not pass `-t`, the program uses all online CPU threads automatically.
+If you do not pass `-gpuId`, the CUDA build uses all detected GPUs
+automatically.
+
 When you use repeated-tail mode (`-lianghao N` or `-l N`), hits are also
 written into an auto-classified directory. By default it is `tron_hits/`, or
 you can override it with `-tronDir some_dir`.

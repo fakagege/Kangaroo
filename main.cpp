@@ -241,6 +241,7 @@ void printTronFromPublicKey(Secp256K1 *secp,const string &value) {
 // Default params
 static int dp = -1;
 static int nbCPUThread;
+static bool cpuThreadsProvided = false;
 static string configFile = "";
 static bool checkFlag = false;
 static bool gpuEnable = false;
@@ -298,6 +299,7 @@ int main(int argc, char* argv[]) {
     if(strcmp(argv[a], "-t") == 0) {
       CHECKARG("-t",1);
       nbCPUThread = getInt("nbCPUThread",argv[a]);
+      cpuThreadsProvided = true;
       a++;
     } else if(strcmp(argv[a],"-d") == 0) {
       CHECKARG("-d",1);
@@ -482,6 +484,7 @@ int main(int argc, char* argv[]) {
   if(tronLianghao > 0 || tronPrefix.length() > 0 || tronSuffix.length() > 0) {
     TRON_VANITY_CONFIG cfg;
     cfg.nbThread = nbCPUThread;
+    cfg.cpuThreadsProvided = cpuThreadsProvided;
     cfg.repeatTailLength = tronLianghao;
     cfg.maxFound = tronCount;
     cfg.prefix = tronPrefix;

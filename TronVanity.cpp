@@ -228,7 +228,10 @@ void writeClassifiedHit(const TRON_VANITY_CONFIG &config,const string &pair,cons
 
 void printConfigBanner(const TRON_VANITY_CONFIG &config,const char *modeName) {
   printf("TRON vanity mode (%s)\n",modeName);
-  printf("Threads     : %d\n",config.nbThread);
+  if(config.cpuThreadsProvided)
+    printf("Threads     : %d\n",config.nbThread);
+  else
+    printf("Threads     : auto (%d)\n",config.nbThread);
   if(config.prefix.length() > 0)
     printf("Prefix      : %s\n",config.prefix.c_str());
   if(config.suffix.length() > 0)
@@ -242,6 +245,22 @@ void printConfigBanner(const TRON_VANITY_CONFIG &config,const char *modeName) {
     string classifyDir = config.classifyDir.length() > 0 ? config.classifyDir : DEFAULT_CLASSIFY_DIR;
     printf("Classify dir: %s\n",classifyDir.c_str());
   }
+}
+
+string getGpuModeText(const TRON_VANITY_CONFIG &config,const vector<int> &deviceIds) {
+  if(deviceIds.size() == 0)
+    return "none";
+
+  if(!config.gpuIdsProvided)
+    return "auto (all available)";
+
+  string text;
+  for(size_t i = 0; i < deviceIds.size(); i++) {
+    if(i > 0)
+      text += ",";
+    text += to_string(deviceIds[i]);
+  }
+  return text;
 }
 
 void printHit(TRON_VANITY_STATE *state,uint64_t foundIndex,const string &address,const string &hexAddress,const string &privateKeyHex) {
@@ -266,6 +285,20 @@ void printHit(TRON_VANITY_STATE *state,uint64_t foundIndex,const string &address
   }
   writeHit(state->config,pair);
   writeClassifiedHit(state->config,pair,labels);
+}
+
+bool tryClaimHit(TRON_VANITY_STATE *state,uint64_t *foundIndex) {
+  uint64_t current = state->foundCount.load(memory_order_relaxed);
+  while(current < state->config.maxFound) {
+    if(state->foundCount.compare_exchange_weak(current,current + 1,memory_order_relaxed)) {
+      *foundIndex = current + 1;
+      if(*foundIndex >= state->config.maxFound)
+        state->stop.store(true,memory_order_relaxed);
+      return true;
+    }
+  }
+  state->stop.store(true,memory_order_relaxed);
+  return false;
 }
 
 void fillRandomPrivateKey(Int *privKey,mt19937_64 &rng,Int *order) {
@@ -297,14 +330,12 @@ void cpuWorker(TRON_VANITY_STATE *state,int threadId) {
     state->totalTried.fetch_add(1,memory_order_relaxed);
 
     if(matches(address,state->config)) {
-      uint64_t foundIndex = state->foundCount.fetch_add(1,memory_order_relaxed) + 1;
-      if(foundIndex <= state->config.maxFound) {
+      uint64_t foundIndex = 0;
+      if(tryClaimHit(state,&foundIndex)) {
         printHit(state,foundIndex,address,TronAddress::PublicKeyToHexAddress(pubKey),padHex64(privKey.GetBase16()));
       }
-      if(foundIndex >= state->config.maxFound) {
-        state->stop.store(true,memory_order_relaxed);
+      if(state->stop.load(memory_order_relaxed))
         break;
-      }
     }
   }
 
@@ -401,6 +432,7 @@ bool runGPU(Secp256K1 *secp,TRON_VANITY_STATE *state) {
   workers.reserve(deviceIds.size());
 
   printConfigBanner(state->config,"GPU");
+  printf("GPU devices : %s\n",getGpuModeText(state->config,deviceIds).c_str());
 
   for(size_t i = 0; i < deviceIds.size(); i++) {
     int deviceId = deviceIds[i];
@@ -441,16 +473,14 @@ bool runGPU(Secp256K1 *secp,TRON_VANITY_STATE *state) {
         state->totalTried.fetch_add(processed,memory_order_relaxed);
 
         for(size_t hitIdx = 0; hitIdx < hits.size(); hitIdx++) {
-          uint64_t foundIndex = state->foundCount.fetch_add(1,memory_order_relaxed) + 1;
-          if(foundIndex <= state->config.maxFound) {
+          uint64_t foundIndex = 0;
+          if(tryClaimHit(state,&foundIndex)) {
             printHit(state,foundIndex,string(hits[hitIdx].address),
                      bytesToHex(hits[hitIdx].rawAddress,VANITY_RAW_ADDRESS_LENGTH),
                      privWordsToHex(hits[hitIdx].priv));
           }
-          if(foundIndex >= state->config.maxFound) {
-            state->stop.store(true,memory_order_relaxed);
+          if(state->stop.load(memory_order_relaxed))
             break;
-          }
         }
       }
 
@@ -574,7 +604,7 @@ bool Run(Secp256K1 *secp,const TRON_VANITY_CONFIG &config) {
   state.totalTried.store(0);
   state.foundCount.store(0);
   state.stop.store(false);
-  printf("Falling back to CPU search\n");
+  printf("No usable CUDA GPU detected, falling back to CPU search\n");
 #endif
 
   return runCPU(&state);

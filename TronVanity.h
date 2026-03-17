@@ -8,6 +8,7 @@
 
 typedef struct {
   int nbThread;
+  bool cpuThreadsProvided;
   int repeatTailLength;
   uint64_t maxFound;
   std::string prefix;
