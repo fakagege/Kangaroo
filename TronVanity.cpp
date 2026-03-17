@@ -2,14 +2,22 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cstring>
+#include <errno.h>
 #include <inttypes.h>
 #include <mutex>
 #include <random>
+#include <set>
 #include <stdio.h>
 #include <thread>
 #include <vector>
+#include <sys/stat.h>
+
+#ifdef WIN64
+#include <direct.h>
+#endif
 
 #include "Timer.h"
 #include "TronAddress.h"
@@ -20,6 +28,7 @@ namespace {
 
 static const char *BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 static const size_t TRON_ADDRESS_LENGTH = 34;
+static const char *DEFAULT_CLASSIFY_DIR = "tron_hits";
 
 typedef struct {
   Secp256K1 *secp;
@@ -92,9 +101,109 @@ bool writeHit(const TRON_VANITY_CONFIG &config,const string &text) {
 
 }
 
+bool isAllDigits(const string &text) {
+  for(char c : text) {
+    if(!isdigit((unsigned char)c))
+      return false;
+  }
+  return text.length() > 0;
+}
+
+bool isAllUpper(const string &text) {
+  for(char c : text) {
+    if(!isupper((unsigned char)c))
+      return false;
+  }
+  return text.length() > 0;
+}
+
+bool isAllLower(const string &text) {
+  for(char c : text) {
+    if(!islower((unsigned char)c))
+      return false;
+  }
+  return text.length() > 0;
+}
+
+bool ensureDir(const string &dir) {
+  if(dir.length() == 0)
+    return true;
+
+  struct stat st;
+  if(stat(dir.c_str(),&st) == 0)
+    return (st.st_mode & S_IFDIR) != 0;
+
+#ifdef WIN64
+  int rc = _mkdir(dir.c_str());
+#else
+  int rc = mkdir(dir.c_str(),0755);
+#endif
+  return rc == 0 || errno == EEXIST;
+}
+
+bool appendLine(const string &filePath,const string &text) {
+  FILE *f = fopen(filePath.c_str(),"a");
+  if(f == NULL)
+    return false;
+  fprintf(f,"%s\n",text.c_str());
+  fclose(f);
+  return true;
+}
+
+string joinPath(const string &dir,const string &file) {
+  if(dir.length() == 0)
+    return file;
+  char last = dir[dir.length() - 1];
+  if(last == '/' || last == '\\')
+    return dir + file;
+  return dir + "/" + file;
+}
+
+vector<string> getClassificationLabels(const string &address,int repeatTailLength) {
+  vector<string> labels;
+  if(repeatTailLength <= 0 || !hasRepeatedTail(address,repeatTailLength))
+    return labels;
+
+  string tail = address.substr(address.length() - repeatTailLength);
+  labels.push_back(tail);
+  labels.push_back(to_string(repeatTailLength) + "nn");
+
+  if(isAllDigits(tail))
+    labels.push_back(to_string(repeatTailLength) + "n");
+  if(isAllUpper(tail))
+    labels.push_back(to_string(repeatTailLength) + "A");
+  if(isAllLower(tail)) {
+    labels.push_back(to_string(repeatTailLength) + "d");
+    labels.push_back(to_string(repeatTailLength) + "a");
+  }
+
+  return labels;
+}
+
+void writeClassifiedHit(const TRON_VANITY_CONFIG &config,const string &pair,const vector<string> &labels) {
+  if(config.repeatTailLength <= 0)
+    return;
+
+  string classifyDir = config.classifyDir.length() > 0 ? config.classifyDir : DEFAULT_CLASSIFY_DIR;
+  if(!ensureDir(classifyDir)) {
+    printf("Cannot create classify directory %s\n",classifyDir.c_str());
+    return;
+  }
+
+  appendLine(joinPath(classifyDir,"all.txt"),pair);
+
+  set<string> uniqueFiles;
+  for(size_t i = 0; i < labels.size(); i++)
+    uniqueFiles.insert(labels[i] + ".txt");
+
+  for(set<string>::iterator it = uniqueFiles.begin(); it != uniqueFiles.end(); ++it)
+    appendLine(joinPath(classifyDir,*it),pair);
+}
+
 void printHit(TRON_VANITY_STATE *state,uint64_t foundIndex,const string &address,const string &hexAddress,const string &privateKeyHex) {
 
   string pair = address + "---" + privateKeyHex;
+  vector<string> labels = getClassificationLabels(address,state->config.repeatTailLength);
 
   lock_guard<mutex> lock(state->outputMutex);
   printf("\nFOUND #%llu\n",(unsigned long long)foundIndex);
@@ -102,7 +211,17 @@ void printHit(TRON_VANITY_STATE *state,uint64_t foundIndex,const string &address
   printf("  TRONHEX : 0x%s\n",hexAddress.c_str());
   printf("  PRIV    : 0x%s\n",privateKeyHex.c_str());
   printf("  PAIR    : %s\n",pair.c_str());
+  if(labels.size() > 0) {
+    printf("  CLASS   : ");
+    for(size_t i = 0; i < labels.size(); i++) {
+      if(i > 0)
+        printf(", ");
+      printf("%s",labels[i].c_str());
+    }
+    printf("\n");
+  }
   writeHit(state->config,pair);
+  writeClassifiedHit(state->config,pair,labels);
 }
 
 void fillRandomPrivateKey(Int *privKey,mt19937_64 &rng,Int *order) {
@@ -234,6 +353,10 @@ bool Run(Secp256K1 *secp,const TRON_VANITY_CONFIG &config) {
   printf("Need found  : %" PRIu64 "\n",config.maxFound);
   if(config.outputFile.length() > 0)
     printf("Output file : %s\n",config.outputFile.c_str());
+  if(config.repeatTailLength > 0) {
+    string classifyDir = config.classifyDir.length() > 0 ? config.classifyDir : DEFAULT_CLASSIFY_DIR;
+    printf("Classify dir: %s\n",classifyDir.c_str());
+  }
 
   vector<thread> workers;
   workers.reserve(config.nbThread);

@@ -12,6 +12,7 @@ typedef struct {
   std::string prefix;
   std::string suffix;
   std::string outputFile;
+  std::string classifyDir;
 } TRON_VANITY_CONFIG;
 
 namespace TronVanity {

@@ -26,6 +26,7 @@
 #include <string.h>
 #include <stdexcept>
 #include <cctype>
+#include <stdint.h>
 
 using namespace std;
 
@@ -70,6 +71,7 @@ void printUsage() {
   printf(" -tronPrefix text: Search TRON addresses starting with text\n");
   printf(" -tronSuffix text: Search TRON addresses ending with text\n");
   printf(" -tronCount n: Stop after n vanity hits (default 1)\n");
+  printf(" -tronDir dir: Directory used for auto-classified repeated-tail hits\n");
   printf(" inFile: intput configuration file\n");
   exit(0);
 
@@ -267,6 +269,7 @@ static int tronLianghao = 0;
 static string tronPrefix = "";
 static string tronSuffix = "";
 static uint64_t tronCount = 1;
+static string tronClassifyDir = "";
 
 int main(int argc, char* argv[]) {
 
@@ -432,6 +435,10 @@ int main(int argc, char* argv[]) {
       CHECKARG("-tronCount",1);
       tronCount = (uint64_t)getInt("tronCount",argv[a]);
       a++;
+    } else if(strcmp(argv[a],"-tronDir") == 0) {
+      CHECKARG("-tronDir",1);
+      tronClassifyDir = string(argv[a]);
+      a++;
     } else if(a == argc - 1) {
       configFile = string(argv[a]);
       a++;
@@ -476,6 +483,7 @@ int main(int argc, char* argv[]) {
     cfg.prefix = tronPrefix;
     cfg.suffix = tronSuffix;
     cfg.outputFile = outputFile;
+    cfg.classifyDir = tronClassifyDir;
     if(gpuEnable)
       printf("Warning: TRON vanity mode is currently CPU-only, ignoring -gpu\n");
     if(!TronVanity::Run(secp,cfg))

@@ -56,6 +56,7 @@ Kangaroo [-v] [-t nbThread] [-d dpBit] [gpu] [-check]
  -tronPrefix text: Search TRON addresses starting with text
  -tronSuffix text: Search TRON addresses ending with text
  -tronCount n: Stop after n vanity hits (default 1)
+ -tronDir dir: Directory used for auto-classified repeated-tail hits
  inFile: intput configuration file
 ```
 
@@ -67,6 +68,33 @@ target because it only contains a hash of the public key.
 TRON vanity mode is currently CPU-only. It reuses the same secp256k1 engine to
 generate random private keys and checks the resulting TRON Base58 address
 against your requested prefix/suffix rules.
+
+When you use repeated-tail mode (`-lianghao N` or `-l N`), hits are also
+written into an auto-classified directory. By default it is `tron_hits/`, or
+you can override it with `-tronDir some_dir`.
+
+For example, `-l 3` will automatically append matching `address---private_key`
+lines into files such as:
+
+```text
+tron_hits/all.txt
+tron_hits/AAA.txt
+tron_hits/aaa.txt
+tron_hits/111.txt
+tron_hits/222.txt
+tron_hits/3A.txt
+tron_hits/3d.txt
+tron_hits/3a.txt
+tron_hits/3n.txt
+tron_hits/3nn.txt
+```
+
+Classification rules:
+- exact repeated suffix file, such as `AAA.txt`, `uuu.txt`, `111.txt`
+- `3A.txt`: three repeated uppercase letters
+- `3d.txt` and `3a.txt`: three repeated lowercase letters
+- `3n.txt`: three repeated digits
+- `3nn.txt`: any repeated tail of length 3
 
 Examples:
 
