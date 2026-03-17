@@ -8,7 +8,7 @@ ifdef gpu
 SRC = SECPK1/IntGroup.cpp main.cpp SECPK1/Random.cpp \
       Timer.cpp SECPK1/Int.cpp SECPK1/IntMod.cpp \
       SECPK1/Point.cpp SECPK1/SECP256K1.cpp \
-      TronAddress.cpp \
+      TronAddress.cpp TronVanity.cpp \
       GPU/GPUEngine.o Kangaroo.cpp HashTable.cpp \
       Backup.cpp Thread.cpp Check.cpp Network.cpp Merge.cpp PartMerge.cpp
 
@@ -18,7 +18,7 @@ OBJET = $(addprefix $(OBJDIR)/, \
       SECPK1/IntGroup.o main.o SECPK1/Random.o \
       Timer.o SECPK1/Int.o SECPK1/IntMod.o \
       SECPK1/Point.o SECPK1/SECP256K1.o \
-      TronAddress.o \
+      TronAddress.o TronVanity.o \
       GPU/GPUEngine.o Kangaroo.o HashTable.o Thread.o \
       Backup.o Check.o Network.o Merge.o PartMerge.o)
 
@@ -27,7 +27,7 @@ else
 SRC = SECPK1/IntGroup.cpp main.cpp SECPK1/Random.cpp \
       Timer.cpp SECPK1/Int.cpp SECPK1/IntMod.cpp \
       SECPK1/Point.cpp SECPK1/SECP256K1.cpp \
-      TronAddress.cpp \
+      TronAddress.cpp TronVanity.cpp \
       Kangaroo.cpp HashTable.cpp Thread.cpp Check.cpp \
       Backup.cpp Network.cpp Merge.cpp PartMerge.cpp
 
@@ -37,7 +37,7 @@ OBJET = $(addprefix $(OBJDIR)/, \
       SECPK1/IntGroup.o main.o SECPK1/Random.o \
       Timer.o SECPK1/Int.o SECPK1/IntMod.o \
       SECPK1/Point.o SECPK1/SECP256K1.o \
-      TronAddress.o \
+      TronAddress.o TronVanity.o \
       Kangaroo.o HashTable.o Thread.o Check.o Backup.o \
       Network.o Merge.o PartMerge.o)
 

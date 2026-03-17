@@ -48,10 +48,14 @@ Kangaroo [-v] [-t nbThread] [-d dpBit] [gpu] [-check]
  -sp port: Server port, default is 17403
  -nt timeout: Network timeout in millisec (default is 3000ms)
  -o fileName: output result to fileName
- -l: List cuda enabled devices
+ -l: List cuda enabled devices, or use -l N for repeated TRON tail chars
  -check: Check GPU kernel vs CPU
  -tronPriv privateKeyHex: Compute TRON address from a private key and exit
  -tronPub publicKeyHex: Compute TRON address from a public key and exit
+ -lianghao N: Search TRON addresses ending with N identical chars
+ -tronPrefix text: Search TRON addresses starting with text
+ -tronSuffix text: Search TRON addresses ending with text
+ -tronCount n: Stop after n vanity hits (default 1)
  inFile: intput configuration file
 ```
 
@@ -59,6 +63,28 @@ TRON utilities derive the address from a secp256k1 public key using
 Keccak-256 + `0x41` prefix + Base58Check. The kangaroo solver itself still
 needs public keys as input; a TRON address alone cannot be used as the search
 target because it only contains a hash of the public key.
+
+TRON vanity mode is currently CPU-only. It reuses the same secp256k1 engine to
+generate random private keys and checks the resulting TRON Base58 address
+against your requested prefix/suffix rules.
+
+Examples:
+
+```bash
+./kangaroo -lianghao 8 -t 8
+./kangaroo -l 8 -t 8
+./kangaroo -tronPrefix TGf9wUdQzmSJbwLxC8vSV9NMsX -tronSuffix uuuuuuuu -t 8
+```
+
+Result format:
+
+```text
+FOUND #1
+  TRON    : TGf9wUdQzmSJbwLxC8vSV9NMsXuuuuuuuu
+  TRONHEX : 0x41...
+  PRIV    : 0x5A69F9DC5C761FAB119C8F763116B30B6F6E5D7301851321265F9021158C04D6
+  PAIR    : TGf9wUdQzmSJbwLxC8vSV9NMsXuuuuuuuu---5A69F9DC5C761FAB119C8F763116B30B6F6E5D7301851321265F9021158C04D6
+```
 
 Structure of the input file:
 * All values are in hex format

@@ -20,6 +20,7 @@
 #include "SECPK1/SECP256k1.h"
 #include "GPU/GPUEngine.h"
 #include "TronAddress.h"
+#include "TronVanity.h"
 #include <fstream>
 #include <string>
 #include <string.h>
@@ -61,10 +62,14 @@ void printUsage() {
   printf(" -sp port: Server port, default is 17403\n");
   printf(" -nt timeout: Network timeout in millisec (default is 3000ms)\n");
   printf(" -o fileName: output result to fileName\n");
-  printf(" -l: List cuda enabled devices\n");
+  printf(" -l: List cuda enabled devices, or use -l N for repeated TRON tail chars\n");
   printf(" -check: Check GPU kernel vs CPU\n");
   printf(" -tronPriv privateKeyHex: Compute TRON address from a private key and exit\n");
   printf(" -tronPub publicKeyHex: Compute TRON address from a public key and exit\n");
+  printf(" -lianghao N: Search TRON addresses ending with N identical chars\n");
+  printf(" -tronPrefix text: Search TRON addresses starting with text\n");
+  printf(" -tronSuffix text: Search TRON addresses ending with text\n");
+  printf(" -tronCount n: Stop after n vanity hits (default 1)\n");
   printf(" inFile: intput configuration file\n");
   exit(0);
 
@@ -163,6 +168,20 @@ bool isHexString(const string &value) {
 
 }
 
+bool isNumberString(const string &value) {
+
+  if(value.length() == 0)
+    return false;
+
+  for(char c : value) {
+    if(!isdigit((unsigned char)c))
+      return false;
+  }
+
+  return true;
+
+}
+
 bool parsePrivateKeyHex(Secp256K1 *secp,const string &value,Int *privKey) {
 
   string hex = normalizeHex(value);
@@ -244,6 +263,10 @@ static string outputFile = "";
 static bool splitWorkFile = false;
 static string tronPrivKey = "";
 static string tronPubKey = "";
+static int tronLianghao = 0;
+static string tronPrefix = "";
+static string tronSuffix = "";
+static uint64_t tronCount = 1;
 
 int main(int argc, char* argv[]) {
 
@@ -277,6 +300,12 @@ int main(int argc, char* argv[]) {
     } else if (strcmp(argv[a], "-h") == 0) {
       printUsage();
     } else if(strcmp(argv[a],"-l") == 0) {
+      if(a < argc - 1 && isNumberString(string(argv[a + 1]))) {
+        a++;
+        tronLianghao = getInt("lianghao",argv[a]);
+        a++;
+        continue;
+      }
 
 #ifdef WITHGPU
       GPUEngine::PrintCudaInfo();
@@ -387,6 +416,22 @@ int main(int argc, char* argv[]) {
       CHECKARG("-tronPub",1);
       tronPubKey = string(argv[a]);
       a++;
+    } else if(strcmp(argv[a],"-lianghao") == 0) {
+      CHECKARG("-lianghao",1);
+      tronLianghao = getInt("lianghao",argv[a]);
+      a++;
+    } else if(strcmp(argv[a],"-tronPrefix") == 0) {
+      CHECKARG("-tronPrefix",1);
+      tronPrefix = string(argv[a]);
+      a++;
+    } else if(strcmp(argv[a],"-tronSuffix") == 0) {
+      CHECKARG("-tronSuffix",1);
+      tronSuffix = string(argv[a]);
+      a++;
+    } else if(strcmp(argv[a],"-tronCount") == 0) {
+      CHECKARG("-tronCount",1);
+      tronCount = (uint64_t)getInt("tronCount",argv[a]);
+      a++;
     } else if(a == argc - 1) {
       configFile = string(argv[a]);
       a++;
@@ -412,10 +457,31 @@ int main(int argc, char* argv[]) {
     exit(-1);
   }
 
+  if((tronLianghao > 0 || tronPrefix.length() > 0 || tronSuffix.length() > 0) &&
+     (tronPrivKey.length() > 0 || tronPubKey.length() > 0 || configFile.length() > 0 || iWorkFile.length() > 0)) {
+    printf("TRON vanity mode cannot be combined with kangaroo input files or -tronPriv/-tronPub\n");
+    exit(-1);
+  }
+
   if(tronPrivKey.length() > 0)
     printTronFromPrivateKey(secp,tronPrivKey);
   if(tronPubKey.length() > 0)
     printTronFromPublicKey(secp,tronPubKey);
+
+  if(tronLianghao > 0 || tronPrefix.length() > 0 || tronSuffix.length() > 0) {
+    TRON_VANITY_CONFIG cfg;
+    cfg.nbThread = nbCPUThread;
+    cfg.repeatTailLength = tronLianghao;
+    cfg.maxFound = tronCount;
+    cfg.prefix = tronPrefix;
+    cfg.suffix = tronSuffix;
+    cfg.outputFile = outputFile;
+    if(gpuEnable)
+      printf("Warning: TRON vanity mode is currently CPU-only, ignoring -gpu\n");
+    if(!TronVanity::Run(secp,cfg))
+      exit(-1);
+    exit(0);
+  }
 
   Kangaroo *v = new Kangaroo(secp,dp,gpuEnable,workFile,iWorkFile,savePeriod,saveKangaroo,saveKangarooByServer,
                              maxStep,wtimeout,port,ntimeout,serverIP,outputFile,splitWorkFile);
