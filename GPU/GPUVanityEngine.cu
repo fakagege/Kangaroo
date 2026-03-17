@@ -513,8 +513,8 @@ GPUVanityEngine::GPUVanityEngine(int nbThreadGroup,int nbThreadPerGroup,int gpuI
     return;
   }
 
-  char tmp[256];
-  sprintf(tmp,"GPU #%d %s Grid(%dx%d) Batch(%d)",gpuId,prop.name,nbThreadGroup,nbThreadPerGroup,VANITY_BATCH_SIZE);
+  char tmp[512];
+  snprintf(tmp,sizeof(tmp),"GPU #%d %s Grid(%dx%d) Batch(%d)",gpuId,prop.name,nbThreadGroup,nbThreadPerGroup,VANITY_BATCH_SIZE);
   deviceName = string(tmp);
 
   err = cudaMalloc((void **)&deviceStates,(size_t)nbThread * VANITY_THREAD_STATE_WORDS * sizeof(uint64_t));
